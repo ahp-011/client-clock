@@ -54,7 +54,7 @@ names, so a Dribbble redesign won't silently break it.
 A profile that only says *United States* could be any of seven times. Instead of
 guessing silently, the card shows an amber strip:
 
-> United States spans 7 zones — showing Eastern. Which one is hershel?
+> United States spans 7 zones — showing Eastern. Which one is Alex?
 > `Eastern 1:30` `Central 12:30` `Mountain 11:30` `Arizona 10:30` `Pacific 10:30` …
 
 Each chip shows the live time in that zone. Click one and that person is pinned
