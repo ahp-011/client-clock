@@ -260,15 +260,26 @@ ipcMain.on('ui:peek', (_e, next) => setPeek(!!next));
 function setPeek(next) {
   if (!win || peeked === next) return;
   const b = win.getBounds();
+  const target = next
+    ? { ...peekSpot(b.y), width: PEEK_W, height: PEEK_H }
+    : { ...(config.pos || topRight()), width: WIDTH, height: COMPACT_H };
+
   if (next) {
     config.pos = { x: b.x, y: b.y };          // remember where the card was
     saveConfig(config);
-    const p = peekSpot(b.y);
-    win.setBounds({ x: p.x, y: p.y, width: PEEK_W, height: PEEK_H });
-  } else {
-    const p = config.pos || topRight();
-    win.setBounds({ x: p.x, y: p.y, width: WIDTH, height: COMPACT_H });
   }
+
+  // Resizing a transparent window on macOS leaves the old frame's pixels in
+  // the buffer — collapsing from the card left a dark slab sitting next to the
+  // tab. Cycling visibility around the resize forces a clean surface.
+  const wasVisible = win.isVisible();
+  if (wasVisible) win.hide();
+  win.setBounds(target);
   peeked = next;
   if (win.webContents) win.webContents.send('ui:peeked', next);
+  if (wasVisible) {
+    win.showInactive();
+    win.setAlwaysOnTop(true, 'floating');
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 }
