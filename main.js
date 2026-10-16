@@ -5,19 +5,22 @@ const http = require('http');
 
 const BRIDGE_PORT = 8899;
 
-const COMPACT_H = 148;   // just the clock card
-const EXPANDED_H = 560;  // clock card + client list / search
-const WIDTH = 380;
-const MARGIN = 16;
+// The window is deliberately larger than the card it holds: a transparent
+// margin for the drop shadow to fall into. Without it the shadow is clipped at
+// the window edge and reads as a hard smear.
+const COMPACT_H = 190;   // just the clock card
+const EXPANDED_H = 600;  // clock card + client list / search
+const WIDTH = 400;       // 368px card + 16px each side
+const MARGIN = 4;
 
 // Collapsed state: a small tab hugging the right edge of the screen.
-const PEEK = 60;
+const PEEK_W = 84;       // 52px tab + room for its shadow to the left
+const PEEK_H = 80;
 const PEEK_MARGIN = 0;   // flush with the edge, like the other docked widgets
 
-// How long a conversation stays "active" with no word from Chrome before the
-// widget tucks itself away. Generous on purpose: switching to Figma for ten
-// minutes shouldn't collapse the clock you're still glancing at.
-const IDLE_MS = 10 * 60 * 1000;
+// Backstop only. Chrome now tells us the moment a conversation loses focus,
+// so this just covers the case where Chrome dies without saying goodbye.
+const IDLE_MS = 60 * 1000;
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 
@@ -47,7 +50,7 @@ let config = loadConfig();
 function peekSpot(y) {
   const { workArea } = screen.getPrimaryDisplay();
   return {
-    x: Math.round(workArea.x + workArea.width - PEEK - PEEK_MARGIN),
+    x: Math.round(workArea.x + workArea.width - PEEK_W - PEEK_MARGIN),
     y: Math.round(y != null ? y : workArea.y + Math.round(workArea.height * 0.25))
   };
 }
@@ -261,7 +264,7 @@ function setPeek(next) {
     config.pos = { x: b.x, y: b.y };          // remember where the card was
     saveConfig(config);
     const p = peekSpot(b.y);
-    win.setBounds({ x: p.x, y: p.y, width: PEEK, height: PEEK });
+    win.setBounds({ x: p.x, y: p.y, width: PEEK_W, height: PEEK_H });
   } else {
     const p = config.pos || topRight();
     win.setBounds({ x: p.x, y: p.y, width: WIDTH, height: COMPACT_H });

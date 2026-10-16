@@ -11,7 +11,7 @@
   const POLL_MS = 1200;
   // Re-send even when nothing changed, so the widget knows the conversation is
   // still open and keeps itself unfolded.
-  const HEARTBEAT_MS = 20000;
+  const HEARTBEAT_MS = 12000;
   const MAX_CANDIDATES = 24;
 
   const NOISE = /^(message|messages|inbox|back to inbox|follow|following|hire me|save|share|like|likes|view profile|schedule a meeting|create a new proposal|view proposal|visit help center|pro|team|about|work|shots|collections|boards|settings|sign out|get hired|hire talent|explore|community)$/i;
@@ -46,11 +46,24 @@
 
   // The conversation heading: the biggest piece of text on the page that reads
   // like a person's name.
+  // Status lines Dribbble tucks inside the same heading element.
+  const STATUS = /\s*(last active|online|offline|active)\b.*$/i;
+
+  function ownText(el) {
+    // Only the heading's own text, not a nested "Last active: 4 hours ago".
+    let t = '';
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3) t += n.nodeValue;
+    }
+    t = clean(t);
+    return t || clean(el.textContent);
+  }
+
   function headingName() {
     const nodes = [...document.querySelectorAll('h1,h2,h3')].filter(visible);
     let best = null, bestSize = 0;
     for (const el of nodes) {
-      const t = clean(el.textContent);
+      let t = clean(ownText(el).replace(STATUS, ''));
       if (!t || t.length > 48 || NOISE.test(t)) continue;
       const size = parseFloat(getComputedStyle(el).fontSize) || 0;
       if (size > bestSize) { best = t; bestSize = size; }
@@ -127,6 +140,14 @@
         handle = m[1]; break;
       }
     }
+    // Best signal of all: an anchor whose own text is this person's name.
+    if (!handle) {
+      for (const a of document.querySelectorAll('a[href]')) {
+        if (clean(a.textContent) !== name) continue;
+        const m = (a.getAttribute('href') || '').match(/^\/([A-Za-z0-9_-]{2,})\/?$/);
+        if (m) { handle = m[1]; break; }
+      }
+    }
     if (!handle && onProfile) handle = location.pathname.replace(/\//g, '');
 
     const key = handle || (onMessages ? 'thread:' + location.pathname.split('/').pop() : 'name:' + name.toLowerCase());
@@ -166,9 +187,26 @@
     send('prospect', data);
   }
 
+  // Leaving the conversation — another tab, another app — means there is no
+  // live chat any more, so tell the widget to fold away. Debounced, because a
+  // click on the widget itself also blurs this window.
+  let blurTimer = null;
+  function goneQuiet() {
+    clearTimeout(blurTimer);
+    blurTimer = setTimeout(() => {
+      if (document.hasFocus() && document.visibilityState === 'visible') return;
+      lastSent = '';
+      send('idle', {});
+    }, 1500);
+  }
+
   setInterval(pump, POLL_MS);
-  window.addEventListener('focus', pump);
-  document.addEventListener('visibilitychange', pump);
+  window.addEventListener('focus', () => { clearTimeout(blurTimer); pump(); });
+  window.addEventListener('blur', goneQuiet);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { clearTimeout(blurTimer); pump(); }
+    else goneQuiet();
+  });
 
   // Dribbble swaps conversations without a page load.
   let lastPath = location.pathname;

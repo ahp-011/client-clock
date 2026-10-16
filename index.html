@@ -40,17 +40,20 @@
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
     color:var(--txt);-webkit-font-smoothing:antialiased;cursor:default;user-select:none}
 
-  .wrap{padding:6px}
+  .wrap{padding:16px 16px 28px}
   body.peek .wrap{display:none}
   body.peek #peek{display:flex}
 
   /* ---------- collapsed: the logo tile, docked to the right edge ---------- */
-  #peek{display:none;position:fixed;inset:0;align-items:center;justify-content:center;
+  #peek{display:none;position:fixed;inset:0;align-items:center;justify-content:flex-end;
         -webkit-app-region:no-drag;cursor:pointer}
   .tab{
-    width:52px;height:52px;margin-right:-6px;
+    width:52px;height:52px;
     border-radius:15px 0 0 15px;background:#FFFFFF;
-    box-shadow:-9px 0 24px rgba(0,0,0,.40), 0 1px 0 rgba(0,0,0,.25);
+    box-shadow:
+      -1px 0 2px rgba(0,0,0,.30),
+      -6px 0 14px -4px rgba(0,0,0,.40),
+      -16px 0 32px -12px rgba(0,0,0,.60);
     display:grid;place-items:center;position:relative;overflow:hidden;
     transition:transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s ease;
   }
@@ -81,9 +84,15 @@
   /* ---------- the card ---------- */
   .card{
     background:var(--s1);
-    border:1px solid var(--line);
-    border-radius:18px;
-    box-shadow:0 20px 44px rgba(0,0,0,.50), 0 2px 8px rgba(0,0,0,.35);
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:16px;
+    /* Three layers: contact, lift, ambient — each tuned to fall inside the
+       window's transparent margin so nothing gets clipped. */
+    box-shadow:
+      0 1px 2px rgba(0,0,0,.34),
+      0 6px 14px -6px rgba(0,0,0,.42),
+      0 18px 40px -14px rgba(0,0,0,.62),
+      inset 0 1px 0 rgba(255,255,255,.055);
     overflow:hidden;
   }
 
@@ -113,10 +122,10 @@
   .clock{-webkit-app-region:drag;display:flex;align-items:center;gap:var(--sp-3);
          padding:var(--sp-2) var(--sp-3) 0}
   .timewrap{min-width:0}
-  .time{font-size:44px;font-weight:750;letter-spacing:-2px;line-height:1;
+  .time{font-size:48px;font-weight:750;letter-spacing:-2.2px;line-height:1;
         color:var(--txt);font-variant-numeric:tabular-nums}
-  .time .mins{font-size:26px;font-weight:650;letter-spacing:-.8px;color:var(--dim)}
-  .time .ph{font-size:32px;font-weight:650;letter-spacing:0;color:var(--faint)}
+  .time .mins{font-size:29px;font-weight:650;letter-spacing:-.9px;color:var(--dim)}
+  .time .ph{font-size:35px;font-weight:650;letter-spacing:0;color:var(--faint)}
   .date{font-size:11px;color:var(--faint);margin-top:3px;white-space:nowrap}
 
   /* The single isolated element on the card — the one thing that pops. */
@@ -324,6 +333,7 @@ let pending = null;   // a place chosen in search, waiting for a name
 let mode = 'manual';  // 'auto' once Chrome tells us who you're looking at
 let folded = false;   // collapsed to the edge tab
 let stale = false;    // the conversation is over; the last person is still shown
+let heldOpen = false; // you opened it yourself — Chrome losing focus must not shut it
 let auto = null;      // { key, name, place|null, precision, alternatives[], at }
 
 const $ = (id) => document.getElementById(id);
@@ -378,6 +388,7 @@ function onProspect(p) {
   // A zone you corrected for this person once is final — never re-guessed.
   const fixed = cfg.overrides[p.key];
   stale = false;
+  heldOpen = false;
   if (fixed) {
     auto = { key: p.key, name: p.name, place: fixed, precision: 'fixed', alternatives: [], at: Date.now() };
     mode = 'auto'; setFolded(false); tick(); return;
@@ -395,6 +406,7 @@ function onProspect(p) {
   }
 
   stale = false;
+  heldOpen = false;          // a live conversation takes over again
   auto = {
     key: p.key,
     name: p.name,
@@ -431,7 +443,9 @@ function setFolded(on) {
 // left off — but mark the badge as no longer live.
 function onIdle() {
   stale = true;
-  setFolded(true);
+  // Opening or touching the card counts as "I want this open" — and clicking
+  // it is itself what takes focus away from Chrome.
+  if (!heldOpen) setFolded(true);
   tick();
 }
 
@@ -712,8 +726,9 @@ function applyExpand() {
 }
 
 $('toggle').onclick = () => { expanded = !expanded; applyExpand(); };
-$('peek').onclick = () => { setFolded(false); tick(); };
-$('close').onclick = () => { expanded = false; applyExpand(); setFolded(true); };
+$('peek').onclick = () => { heldOpen = true; setFolded(false); tick(); };
+document.querySelector('.card').addEventListener('mousedown', () => { heldOpen = true; });
+$('close').onclick = () => { heldOpen = false; expanded = false; applyExpand(); setFolded(true); };
 $('search').oninput = renderList;
 $('search').onkeydown = (e) => {
   if (e.key === 'Escape') { if (pending) cancelAdd(); else { expanded = false; applyExpand(); } }
