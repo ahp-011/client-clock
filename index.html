@@ -2,32 +2,54 @@
 <meta charset="utf-8">
 <title>Client Clock</title>
 <style>
+  /* ---------------------------------------------------------------------
+     Tokens. Brand first, then a dark-surface ladder, then stage colour.
+     Blue #1B4DFF is the logo's blue; on dark it only ever appears as a fill,
+     never as text — it fails contrast as a foreground, so text and icons use
+     the lifted tint instead.
+     --------------------------------------------------------------------- */
   :root{
-    --card:#111318;
-    --card-2:#15181F;
-    --line:rgba(255,255,255,.08);
-    --txt:#F2F4F8;
-    --dim:#8A91A0;
-    --accent:#37E2D5;
+    /* brand */
+    --brand:#1B4DFF;
+    --brand-lift:#5B7FFF;              /* brand, readable on dark */
+    --brand-wash:rgba(27,77,255,.16);
+    --brand-edge:rgba(91,127,255,.42);
+
+    /* surfaces: elevation by lightness, not shadow */
+    --s0:#0D0F14;
+    --s1:#14171E;
+    --s2:#1B1F28;
+    --s3:#232834;
+    --line:rgba(255,255,255,.07);
+    --line-2:rgba(255,255,255,.12);
+
+    /* text */
+    --txt:#E9ECF3;                     /* off-white, not pure white */
+    --dim:#8B93A3;
+    --faint:#616A7A;
+
+    /* the one colour that changes: whichever stage the client is in */
+    --stage:#3DD9CC;
+
+    /* spacing scale, 4px base */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
   }
+
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;background:transparent;overflow:hidden;
-    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",system-ui,sans-serif;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
     color:var(--txt);-webkit-font-smoothing:antialiased;cursor:default;user-select:none}
 
   .wrap{padding:6px}
   body.peek .wrap{display:none}
   body.peek #peek{display:flex}
 
-  /* Collapsed: the logo tile itself, squeezed against the right screen edge. */
-  #peek{
-    display:none;position:fixed;inset:0;align-items:center;justify-content:center;
-    -webkit-app-region:no-drag;cursor:pointer;
-  }
+  /* ---------- collapsed: the logo tile, docked to the right edge ---------- */
+  #peek{display:none;position:fixed;inset:0;align-items:center;justify-content:center;
+        -webkit-app-region:no-drag;cursor:pointer}
   .tab{
     width:52px;height:52px;margin-right:-6px;
-    border-radius:15px 0 0 15px;
-    background:#FFFFFF;
+    border-radius:15px 0 0 15px;background:#FFFFFF;
     box-shadow:-9px 0 24px rgba(0,0,0,.40), 0 1px 0 rgba(0,0,0,.25);
     display:grid;place-items:center;position:relative;overflow:hidden;
     transition:transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s ease;
@@ -44,108 +66,127 @@
     transition:transform .3s cubic-bezier(.2,.8,.3,1)}
   #peek:hover .mark{transform:scale(1.05)}
   #peek:hover .mark .sq{transform:translate(16px,-16px) scale(1.12)}
-  @media (prefers-reduced-motion: reduce){ .mark{transition:none} }
 
-  /* A user-supplied logo.png simply covers the built-in mark. */
   .userlogo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 
-  /* Stage colour of whoever was last on screen — a hint without opening it. */
   .pip{position:absolute;bottom:5px;left:5px;width:6px;height:6px;border-radius:50%;
-       background:var(--accent);box-shadow:0 0 0 1.5px #fff;opacity:0;transition:opacity .25s}
+       background:var(--stage);box-shadow:0 0 0 1.5px #fff;opacity:0;transition:opacity .25s}
   .pip.on{opacity:1;animation:pulse 2.8s ease-in-out infinite}
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
 
-  /* The card arriving when a conversation opens. */
   @keyframes cardIn{from{opacity:0;transform:translateX(16px) scale(.985)}
                     to{opacity:1;transform:none}}
   .wrap.enter{animation:cardIn .22s cubic-bezier(.2,.8,.3,1) both}
 
-  @media (prefers-reduced-motion: reduce){
-    .tab,.mark .ring,.mark .sq{transition:none}
-    .pip.on{animation:none}
-    .wrap.enter{animation:none}
-  }
-
+  /* ---------- the card ---------- */
   .card{
-    background:linear-gradient(180deg,var(--card) 0%,var(--card-2) 100%);
+    background:var(--s1);
     border:1px solid var(--line);
-    border-radius:20px;
-    box-shadow:0 18px 40px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.35);
+    border-radius:18px;
+    box-shadow:0 20px 44px rgba(0,0,0,.50), 0 2px 8px rgba(0,0,0,.35);
     overflow:hidden;
   }
 
-  /* ---------- top bar ---------- */
-  .bar{display:flex;align-items:center;gap:8px;padding:9px 12px 0 14px;-webkit-app-region:drag}
-  .who{font-size:12.5px;font-weight:650;letter-spacing:.2px;color:var(--txt);
-       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
-  .place{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-  .btn{-webkit-app-region:no-drag;width:22px;height:22px;flex:none;border-radius:7px;border:0;
-       background:rgba(255,255,255,.06);color:var(--dim);font-size:12px;line-height:1;
-       display:grid;place-items:center;cursor:pointer;transition:.15s}
-  .btn:hover{background:rgba(255,255,255,.14);color:var(--txt)}
+  /* ---------- header: product signature, then who ---------- */
+  .bar{display:flex;align-items:center;gap:var(--sp-2);
+       padding:var(--sp-3) var(--sp-3) 0 var(--sp-3);-webkit-app-region:drag}
+  .sig{width:20px;height:20px;border-radius:6px;background:#fff;flex:none;
+       display:grid;place-items:center;overflow:hidden}
+  .sig svg{width:100%;height:100%;display:block}
+  .idwrap{flex:1;min-width:0}
+  .who{font-size:13px;font-weight:650;letter-spacing:-.1px;color:var(--txt);
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+  .place{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;
+         text-overflow:ellipsis;line-height:1.3;margin-top:1px}
 
-  /* ---------- clock ---------- */
-  .clock{-webkit-app-region:drag;display:flex;align-items:flex-end;gap:12px;padding:2px 14px 0}
-  .time{font-size:56px;font-weight:800;letter-spacing:-2.5px;line-height:1.02;
-        color:var(--accent);font-variant-numeric:tabular-nums}
-  .time .mins{font-size:34px;font-weight:700;letter-spacing:-1px;opacity:.85}
-  .stagewrap{padding-bottom:9px;min-width:0;flex:1}
-  .stage{font-size:19px;font-weight:800;letter-spacing:-.3px;line-height:1.1;color:var(--accent);
-         text-transform:capitalize;white-space:nowrap}
-  .date{font-size:11.5px;color:var(--dim);margin-top:2px;white-space:nowrap;
-        overflow:hidden;text-overflow:ellipsis}
-
-  /* ---------- verdict strip ---------- */
-  .strip{-webkit-app-region:drag;display:flex;align-items:center;gap:8px;
-         margin:8px 10px 10px;padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.04)}
-  .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.05)}
-  .verdict{font-size:11.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-  .delta{font-size:11px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
-
-  .badge{font-size:8.5px;font-weight:800;letter-spacing:.9px;padding:2.5px 5px;border-radius:5px;
-         background:rgba(61,220,132,.16);color:#3DDC84;flex:none;display:none}
+  .badge{font-size:8.5px;font-weight:800;letter-spacing:.9px;padding:3px 5px;border-radius:5px;
+         background:var(--brand);color:#fff;flex:none;display:none;line-height:1}
   .badge.on{display:block}
-  .badge.stale{background:rgba(255,255,255,.07);color:var(--dim)}
+  .badge.stale{background:rgba(255,255,255,.08);color:var(--dim)}
 
-  .fix{display:none;gap:6px;align-items:center;margin:0 10px 10px;padding:8px 10px;
-       border-radius:12px;background:rgba(255,194,75,.10);border:1px solid rgba(255,194,75,.22);
-       flex-wrap:wrap}
+  .btn{-webkit-app-region:no-drag;width:22px;height:22px;flex:none;border-radius:7px;border:0;
+       background:rgba(255,255,255,.05);color:var(--dim);font-size:12px;line-height:1;
+       display:grid;place-items:center;cursor:pointer;transition:background .15s,color .15s}
+  .btn:hover{background:rgba(255,255,255,.13);color:var(--txt)}
+
+  /* ---------- the clock: size carries the hierarchy, colour carries the stage ---------- */
+  .clock{-webkit-app-region:drag;display:flex;align-items:center;gap:var(--sp-3);
+         padding:var(--sp-2) var(--sp-3) 0}
+  .timewrap{min-width:0}
+  .time{font-size:44px;font-weight:750;letter-spacing:-2px;line-height:1;
+        color:var(--txt);font-variant-numeric:tabular-nums}
+  .time .mins{font-size:26px;font-weight:650;letter-spacing:-.8px;color:var(--dim)}
+  .time .ph{font-size:32px;font-weight:650;letter-spacing:0;color:var(--faint)}
+  .date{font-size:11px;color:var(--faint);margin-top:3px;white-space:nowrap}
+
+  /* The single isolated element on the card — the one thing that pops. */
+  .stage{margin-left:auto;flex:none;
+         font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+         color:#0D0F14;background:var(--stage);
+         padding:6px 10px;border-radius:999px;white-space:nowrap;
+         transition:background .4s ease}
+
+  /* ---------- verdict ---------- */
+  .strip{-webkit-app-region:drag;display:flex;align-items:center;gap:var(--sp-2);
+         margin:var(--sp-3) var(--sp-3) var(--sp-2);padding:8px 10px;
+         border-radius:11px;background:var(--s2)}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .verdict{font-size:11.5px;font-weight:650;white-space:nowrap;overflow:hidden;
+           text-overflow:ellipsis;flex:1}
+  .delta{font-size:10.5px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  /* ---------- zone disambiguation ---------- */
+  .fix{display:none;gap:var(--sp-2);align-items:center;margin:0 var(--sp-3) var(--sp-3);
+       padding:9px 10px;border-radius:11px;
+       background:var(--brand-wash);border:1px solid var(--brand-edge);flex-wrap:wrap}
   .fix.on{display:flex}
-  .fixnote{font-size:10.5px;color:#FFC24B;width:100%;line-height:1.35;font-weight:600}
-  .chip{-webkit-app-region:no-drag;font-size:10.5px;font-weight:650;padding:4px 8px;border-radius:8px;
-        border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--txt);cursor:pointer}
-  .chip:hover{background:rgba(255,255,255,.16)}
-  .chip.sel{background:rgba(55,226,213,.18);border-color:rgba(55,226,213,.45);color:var(--accent)}
+  .fixnote{font-size:10.5px;color:var(--brand-lift);width:100%;line-height:1.4;font-weight:650}
+  .chip{-webkit-app-region:no-drag;font-size:10.5px;font-weight:650;padding:4px 8px;
+        border-radius:8px;border:1px solid var(--line-2);background:rgba(255,255,255,.05);
+        color:var(--txt);cursor:pointer;font-variant-numeric:tabular-nums;
+        transition:background .14s,border-color .14s}
+  .chip:hover{background:rgba(255,255,255,.14)}
+  .chip.sel{background:var(--brand);border-color:var(--brand);color:#fff}
 
   /* ---------- panel ---------- */
-  .panel{display:none;border-top:1px solid var(--line);padding:10px 10px 10px}
+  .panel{display:none;border-top:1px solid var(--line);padding:var(--sp-3) var(--sp-3) var(--sp-3)}
   .panel.on{display:block}
-  .label{font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;
-         color:#636A79;margin:2px 4px 7px}
-  input{-webkit-app-region:no-drag;width:100%;background:rgba(255,255,255,.06);border:1px solid var(--line);
-        color:var(--txt);border-radius:11px;padding:9px 11px;font-size:13px;font-family:inherit;outline:0}
-  input::placeholder{color:#5C6373}
-  input:focus{border-color:rgba(55,226,213,.5);background:rgba(255,255,255,.08)}
+  .label{font-size:9.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;
+         color:var(--faint);margin:0 var(--sp-1) 7px}
+  input{-webkit-app-region:no-drag;width:100%;background:var(--s2);
+        border:1px solid var(--line);color:var(--txt);border-radius:10px;
+        padding:9px 11px;font-size:12.5px;font-family:inherit;outline:0;
+        transition:border-color .15s, background .15s}
+  input::placeholder{color:var(--faint)}
+  input:focus{border-color:var(--brand-edge);background:var(--s3)}
 
-  .list{margin-top:8px;max-height:292px;overflow-y:auto;overscroll-behavior:contain}
+  .list{margin-top:var(--sp-2);max-height:282px;overflow-y:auto;overscroll-behavior:contain}
   .list::-webkit-scrollbar{width:7px}
   .list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
 
-  .row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:9px;padding:8px 10px;
-       border-radius:11px;cursor:pointer;transition:.12s}
-  .row:hover{background:rgba(255,255,255,.07)}
-  .row.active{background:rgba(55,226,213,.12)}
+  .row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:var(--sp-2);
+       padding:8px 10px;border-radius:10px;cursor:pointer;transition:background .12s}
+  .row:hover{background:rgba(255,255,255,.06)}
+  .row.active{background:var(--brand-wash);box-shadow:inset 2px 0 0 var(--brand)}
   .flag{font-size:15px;flex:none;width:19px;text-align:center}
   .rowmain{flex:1;min-width:0}
   .rowtop{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .rowsub{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-  .rowtime{font-size:11.5px;font-weight:700;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+  .rowsub{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;
+          text-overflow:ellipsis;margin-top:1px}
+  .rowtime{font-size:11.5px;font-weight:700;text-align:right;flex:none;
+           font-variant-numeric:tabular-nums}
   .rowstage{font-size:9.5px;color:var(--dim);text-align:right;margin-top:1px;text-transform:capitalize}
   .x{flex:none;opacity:0;color:var(--dim);font-size:13px;padding:0 2px;border:0;background:0;cursor:pointer}
   .row:hover .x{opacity:.65}
-  .x:hover{opacity:1 !important;color:#FF6B5B}
-  .empty{font-size:11.5px;color:var(--dim);padding:10px 12px;line-height:1.5}
-  .hint{font-size:10.5px;color:#5C6373;margin:9px 4px 0;line-height:1.45}
+  .x:hover{opacity:1 !important;color:#FF7A66}
+  .empty{font-size:11.5px;color:var(--dim);padding:10px 12px;line-height:1.55}
+  .hint{font-size:10.5px;color:var(--faint);margin:var(--sp-2) var(--sp-1) 0;line-height:1.45}
+
+  @media (prefers-reduced-motion: reduce){
+    .tab,.mark,.mark .sq,.stage{transition:none}
+    .pip.on{animation:none}
+    .wrap.enter{animation:none}
+  }
 </style>
 
 <div id="peek" title="Client Clock — click to open">
@@ -169,19 +210,34 @@
 
 <div class="wrap"><div class="card">
   <div class="bar">
-    <div class="who" id="who">—</div>
+    <div class="sig" aria-hidden="true">
+      <svg viewBox="0 0 512 512">
+        <defs>
+          <mask id="sigNotch" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+            <rect width="512" height="512" fill="#fff"/>
+            <rect x="300" y="125" width="86" height="86" fill="#000"/>
+          </mask>
+        </defs>
+        <circle cx="256" cy="256" r="101" fill="none" stroke="#0B0B0C"
+                stroke-width="58" mask="url(#sigNotch)"/>
+        <rect x="308" y="133" width="70" height="70" fill="#1B4DFF"/>
+      </svg>
+    </div>
+    <div class="idwrap">
+      <div class="who" id="who">—</div>
+      <div class="place" id="place"></div>
+    </div>
     <div class="badge" id="badge">AUTO</div>
-    <div class="place" id="place"></div>
     <button class="btn" id="toggle" title="Switch client">⌄</button>
-    <button class="btn" id="close" title="Hide (⌘⇧K)">✕</button>
+    <button class="btn" id="close" title="Collapse">✕</button>
   </div>
 
   <div class="clock">
-    <div class="time" id="time">—</div>
-    <div class="stagewrap">
-      <div class="stage" id="stage">—</div>
+    <div class="timewrap">
+      <div class="time" id="time">—</div>
       <div class="date" id="date"></div>
     </div>
+    <div class="stage" id="stage">—</div>
   </div>
 
   <div class="strip">
@@ -387,7 +443,7 @@ function paintPip() {
   if (live) {
     const p = partsIn(t.zone, new Date());
     const st = stageFor(p.h);
-    document.documentElement.style.setProperty('--accent', st.color);
+    document.documentElement.style.setProperty('--stage', st.color);
     $('peek').title = `${t.name} — ${hour12(p.h)}:${String(p.m).padStart(2, '0')} ${st.name}`;
   } else {
     $('peek').title = 'Client Clock — click to open';
@@ -421,14 +477,14 @@ function tick() {
   if (t.missing) {
     $('who').textContent = t.name;
     $('place').textContent = 'location not on profile';
-    $('time').textContent = '—';
+    $('time').innerHTML = '<span class="ph">--:--</span>';
     $('stage').textContent = 'zone unknown';
     $('date').textContent = '';
     $('verdict').textContent = 'Open ⌄ and pick their zone once';
     $('verdict').style.color = TONE.warn;
     $('dot').style.background = TONE.warn;
     $('delta').textContent = '';
-    document.documentElement.style.setProperty('--accent', '#8A91A0');
+    document.documentElement.style.setProperty('--stage', '#8B93A3');
     $('badge').className = 'badge on stale';
     $('fix').classList.remove('on');
     if (expanded) renderList();
@@ -440,7 +496,7 @@ function tick() {
   const s = stageFor(p.h);
   const weekend = p.weekday === 'Sat' || p.weekday === 'Sun';
 
-  document.documentElement.style.setProperty('--accent', s.color);
+  document.documentElement.style.setProperty('--stage', s.color);
   $('who').textContent = t.name;
   $('place').textContent = `${t.flag} ${t.city}${t.region ? ' · ' + t.region : ''}`;
   $('time').innerHTML = `${hour12(p.h)}<span class="mins">:${String(p.m).padStart(2, '0')}</span>`;
@@ -462,7 +518,7 @@ function tick() {
 function paintIdle(who, stage, verdict) {
   $('who').textContent = who;
   $('place').textContent = '';
-  $('time').textContent = '—';
+  $('time').innerHTML = '<span class="ph">--:--</span>';
   $('stage').textContent = stage;
   $('date').textContent = '';
   $('verdict').textContent = verdict;
@@ -568,7 +624,7 @@ function renderList() {
       time: `${hour12(p.h)}:${String(p.m).padStart(2, '0')}`,
       stage: s.name,
       color: s.color,
-      active: i === cfg.activeId,
+      active: mode === 'manual' && i === cfg.activeId,
       onClick: () => { mode = 'manual'; cfg.activeId = i; save(); tick(); },
       onRemove: () => {
         cfg.clients.splice(i, 1);
