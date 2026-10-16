@@ -611,6 +611,13 @@ function paintIdle(who, stage, verdict) {
 
 // A bare country like "United States" covers several zones. Say so, and let
 // one click settle it for this person for good.
+// IANA region comments can run long ("EST - ON (Atikokan), NU (Coral Harbour)").
+// Keep the part that identifies the clock and drop the gazetteer.
+function zoneLabel(s) {
+  const first = String(s || '').split(/[,(]/)[0].trim();
+  return first.length > 20 ? first.slice(0, 19).trimEnd() + '…' : first;
+}
+
 function renderFix() {
   const box = $('fix');
   const show = mode === 'auto' && auto && auto.place &&
@@ -627,7 +634,7 @@ function renderFix() {
     const b = document.createElement('button');
     b.className = 'chip' + (z.zone === auto.place.zone ? ' sel' : '');
     const pz = partsIn(z.zone, new Date());
-    b.textContent = `${z.region || z.city} ${hour12(pz.h)}:${String(pz.m).padStart(2, '0')}`;
+    b.textContent = `${zoneLabel(z.region) || z.city} ${hour12(pz.h)}:${String(pz.m).padStart(2, '0')}`;
     b.onclick = () => setOverride(auto.key, {
       zone: z.zone, city: z.city, region: z.region, country: z.country, flag: z.flag
     });
@@ -664,9 +671,12 @@ function renderList() {
   if (q) {
     $('listLabel').textContent = 'Add a place';
     $('hint').textContent = 'Pick a place, then give it a name';
-    const hits = ZONES.filter(z =>
+    const matched = ZONES.filter(z =>
       (`${z.city} ${z.region} ${z.country} ${z.tags}`).toLowerCase().includes(q)
-    ).slice(0, 40);
+    );
+    // One row per distinct clock in a country: searching a big country should
+    // offer its handful of real times, not all 29 of its IANA zones.
+    const hits = Places.primary(matched).slice(0, 40);
 
     list.innerHTML = hits.length ? '' : '<div class="empty">Nothing matched. Try the country name, or a big city in it.</div>';
     hits.forEach(z => {
@@ -674,7 +684,7 @@ function renderList() {
       const s = stageFor(p.h);
       list.appendChild(rowEl({
         flag: z.flag,
-        top: `${z.city}${z.region ? ' · ' + z.region : ''}`,
+        top: `${z.city}${z.region ? ' · ' + zoneLabel(z.region) : ''}`,
         sub: z.country,
         time: `${hour12(p.h)}:${String(p.m).padStart(2, '0')}`,
         stage: s.name,

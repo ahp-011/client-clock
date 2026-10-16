@@ -120,11 +120,26 @@ saved client pins the card manually until the next conversation you open.
 
 ## What it understands
 
-123 places across 109 countries, plus every US state, Canadian province and
-Australian state, and ~400 major cities — so `Austin, TX` lands on Central and
-not on Eastern. Ambiguities are handled deliberately: bare *Georgia* is the
-country, *Atlanta, Georgia* is the US state, and a person named Jordan is never
-mistaken for Amman.
+**Every country on earth** — 419 time zones across 248 countries and
+territories, generated straight from the IANA database that ships with macOS
+(`/usr/share/zoneinfo/zone.tab`), so there is no list to keep topping up. On top
+of that: every US state, Canadian province and Australian state, and ~400 major
+cities, so `Austin, TX` lands on Central and not on Eastern.
+
+Ambiguities are handled deliberately. Bare *Georgia* is the country while
+*Atlanta, Georgia* is the US state; *Jersey* is the island but *Jersey City, NJ*
+is not; and a person named Jordan is never mistaken for Amman.
+
+Countries with many zones collapse to the handful of clocks that actually
+differ — the US offers 8 choices, not its 29 IANA zones. Two zones count as the
+same clock only if they agree in **both January and July**, so Phoenix never
+hides behind Los Angeles just because they happen to match in summer.
+
+To refresh after a macOS timezone-data update:
+
+```bash
+node tools-genzones.js
+```
 
 ## Run
 

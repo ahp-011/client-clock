@@ -8,7 +8,11 @@
 // name and the short strings from their profile card.
 // ---------------------------------------------------------------------------
 (() => {
-  const POLL_MS = 1200;
+  const POLL_MS = 900;           // safety net only; switching is event-driven
+  // When the conversation changes, the new sidebar paints over the next few
+  // frames. Re-read on this ladder until the person actually changes, instead
+  // of waiting for the next poll.
+  const BURST_MS = [0, 50, 120, 220, 350, 520, 750, 1050, 1500];
   // Re-send even when nothing changed, so the widget knows the conversation is
   // still open and keeps itself unfolded.
   const HEARTBEAT_MS = 12000;
@@ -158,6 +162,9 @@
   let lastSent = '';
   let lastSentAt = 0;
   let toldIdle = false;
+  let lastKey = null;
+  let burstTimers = [];
+  let awaitingNewKey = false;   // mid-switch: the sidebar may still be stale
 
   function send(type, payload) {
     try { chrome.runtime.sendMessage({ type, payload }, () => void chrome.runtime.lastError); }
@@ -179,12 +186,35 @@
     }
     toldIdle = false;
 
+    // Straight after a conversation switch the old person can still be in the
+    // DOM for a frame or two. Don't flash them back onto the widget.
+    if (awaitingNewKey && data.key === lastKey) return;
+    awaitingNewKey = false;
+
     const sig = JSON.stringify(data);
     const now = Date.now();
     if (sig === lastSent && now - lastSentAt < HEARTBEAT_MS) return;
     lastSent = sig;
     lastSentAt = now;
+    lastKey = data.key;
     send('prospect', data);
+  }
+
+  // Re-read across the next ~1.5s of rendering, stopping as soon as the person
+  // has actually changed. Cheap: each pass is one scoped DOM read.
+  function burst(expectNew) {
+    burstTimers.forEach(clearTimeout);
+    burstTimers = [];
+    if (expectNew) awaitingNewKey = true;
+    for (const d of BURST_MS) {
+      burstTimers.push(setTimeout(() => {
+        if (!awaitingNewKey && d > 0 && !expectNew) return;
+        pump();
+      }, d));
+    }
+    // Never leave the guard up: if nothing new ever appears, let the next poll
+    // report whatever is actually on screen.
+    burstTimers.push(setTimeout(() => { awaitingNewKey = false; }, BURST_MS[BURST_MS.length - 1] + 200));
   }
 
   // Leaving the conversation — another tab, another app — means there is no
@@ -201,18 +231,42 @@
   }
 
   setInterval(pump, POLL_MS);
-  window.addEventListener('focus', () => { clearTimeout(blurTimer); pump(); });
+  window.addEventListener('focus', () => { clearTimeout(blurTimer); burst(false); });
   window.addEventListener('blur', goneQuiet);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { clearTimeout(blurTimer); pump(); }
+    if (document.visibilityState === 'visible') { clearTimeout(blurTimer); burst(false); }
     else goneQuiet();
   });
 
-  // Dribbble swaps conversations without a page load.
+  // Dribbble swaps conversations without a page load, so the URL changing is
+  // the earliest possible signal. Catch it three ways: the History API calls
+  // themselves, back/forward, and the DOM churn that follows.
   let lastPath = location.pathname;
-  new MutationObserver(() => {
-    if (location.pathname !== lastPath) { lastPath = location.pathname; lastSent = ''; }
-  }).observe(document.body, { childList: true, subtree: true });
+  function pathChanged() {
+    if (location.pathname === lastPath) return false;
+    lastPath = location.pathname;
+    lastSent = '';
+    burst(true);
+    return true;
+  }
 
-  setTimeout(pump, 600);
+  for (const fn of ['pushState', 'replaceState']) {
+    const orig = history[fn];
+    history[fn] = function () {
+      const r = orig.apply(this, arguments);
+      pathChanged();
+      return r;
+    };
+  }
+  window.addEventListener('popstate', pathChanged);
+  new MutationObserver(pathChanged).observe(document.body, { childList: true, subtree: true });
+
+  // Clicking a conversation in the list happens a beat before the URL changes,
+  // so start reading immediately rather than waiting for it.
+  document.addEventListener('click', (e) => {
+    const a = e.target && e.target.closest && e.target.closest('a[href*="/messages/"], [data-conversation-id], li, tr');
+    if (a) burst(true);
+  }, true);
+
+  setTimeout(pump, 400);
 })();

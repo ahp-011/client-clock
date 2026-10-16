@@ -108,6 +108,12 @@
   // address ("Georgia" vs "Atlanta, Georgia").
   const SOLO_COUNTRY = { 'georgia': 'Georgia (country)' };
 
+  // Country names that are also ordinary place words elsewhere. These only
+  // count as a country when they are the whole location string, so
+  // "Jersey City, NJ" stays in New Jersey instead of flying to the Channel
+  // Islands.
+  const SOLO_ONLY = ['Jersey', 'Guernsey', 'Isle of Man', 'Saint Helena'];
+
   const STATE_SETS = [
     { country: 'United States', map: US },
     { country: 'Canada',        map: CA },
@@ -140,12 +146,54 @@
     return zones.filter(z => z.country === country);
   }
 
+  function offsetMinutes(zone, date) {
+    const f = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit',
+      day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const p = {};
+    for (const { type, value } of f.formatToParts(date)) p[type] = value;
+    const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+    return Math.round((asUTC - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+  }
+
+  /**
+   * One row per distinct clock within a country. The US has 29 IANA zones but
+   * only a handful of actual times, and nobody wants to choose between
+   * America/Detroit and America/New_York when both read 1:30.
+   *
+   * Two zones count as the same clock only if they agree in BOTH January and
+   * July. Testing today's offset alone would collapse Phoenix into Los Angeles
+   * every summer and then show the wrong time all winter, since Arizona skips
+   * daylight saving.
+   */
+  function primary(list) {
+    const y = new Date().getFullYear();
+    const jan = new Date(Date.UTC(y, 0, 15));
+    const jul = new Date(Date.UTC(y, 6, 15));
+    const seen = new Set();
+    const out = [];
+    for (const z of list) {
+      const key = (z.cc || z.country) + '|' +
+                  offsetMinutes(z.zone, jan) + '|' + offsetMinutes(z.zone, jul);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(z);
+    }
+    return out;
+  }
+
   function countryMatch(text, zones) {
     const names = [...new Set(zones.map(z => z.country))];
     let best = null;
     for (const c of names) {
+      const soloOnly = SOLO_ONLY.indexOf(c) !== -1;
       const candidates = [c, ...(COUNTRY_ALIASES[c] || [])].map(norm);
       for (const cand of candidates) {
+        if (soloOnly) {
+          if (text === cand && (!best || cand.length > best.len)) best = { country: c, len: cand.length };
+          continue;
+        }
         // Bare "us" / "uk" are only trusted as a standalone location string,
         // never as a word floating inside a longer sentence.
         const risky = cand.length <= 2;
@@ -246,11 +294,11 @@
       flag: e ? e.flag : '🌍',
       precision,
       // Only a country-level guess is ambiguous; a city or state is settled.
-      alternatives: precision === 'country' && siblings.length > 1 ? siblings : []
+      alternatives: precision === 'country' && siblings.length > 1 ? primary(siblings) : []
     };
   }
 
-  const api = { resolve, norm, COUNTRY_ALIASES };
+  const api = { resolve, norm, primary, offsetMinutes, COUNTRY_ALIASES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.Places = api;
 })(typeof window !== 'undefined' ? window : globalThis);
