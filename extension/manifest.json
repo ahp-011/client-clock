@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Client Clock — Dribbble bridge",
+  "version": "1.1.0",
+  "description": "Tells the Client Clock desktop widget who you are currently talking to on Dribbble, so it can show that person's local time.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8899/*"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Client Clock — follows the Dribbble conversation you're reading",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://dribbble.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": { "service_worker": "background.js" }
+}

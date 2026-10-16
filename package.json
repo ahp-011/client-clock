@@ -1,0 +1,10 @@
+{
+  "name": "client-clock",
+  "version": "1.0.0",
+  "description": "Always-on-top world clock for sales follow-ups: shows a client's local time as a plain stage word (morning / afternoon / late night) instead of AM/PM.",
+  "main": "main.js",
+  "scripts": { "start": "electron ." },
+  "author": "Aman Hasan",
+  "license": "MIT",
+  "dependencies": { "electron": "^33.0.0" }
+}

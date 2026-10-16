@@ -1,0 +1,672 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Client Clock</title>
+<style>
+  :root{
+    --card:#111318;
+    --card-2:#15181F;
+    --line:rgba(255,255,255,.08);
+    --txt:#F2F4F8;
+    --dim:#8A91A0;
+    --accent:#37E2D5;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:transparent;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",system-ui,sans-serif;
+    color:var(--txt);-webkit-font-smoothing:antialiased;cursor:default;user-select:none}
+
+  .wrap{padding:6px}
+  body.peek .wrap{display:none}
+  body.peek #peek{display:flex}
+
+  /* Collapsed: the logo tile itself, squeezed against the right screen edge. */
+  #peek{
+    display:none;position:fixed;inset:0;align-items:center;justify-content:center;
+    -webkit-app-region:no-drag;cursor:pointer;
+  }
+  .tab{
+    width:52px;height:52px;margin-right:-6px;
+    border-radius:15px 0 0 15px;
+    background:#FFFFFF;
+    box-shadow:-9px 0 24px rgba(0,0,0,.40), 0 1px 0 rgba(0,0,0,.25);
+    display:grid;place-items:center;position:relative;overflow:hidden;
+    transition:transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s ease;
+  }
+  #peek:hover .tab{transform:translateX(-5px);box-shadow:-14px 0 30px rgba(0,0,0,.5)}
+  #peek:active .tab{transform:translateX(-2px) scale(.97)}
+
+  .mark{width:100%;height:100%;display:block;
+    transition:transform .3s cubic-bezier(.2,.8,.3,1)}
+  /* Only the square moves on its own: the C is a masked circle, and a mask
+     stays put when you transform the shape under it. Scaling the whole SVG
+     moves mark and mask together, so that part is done on .mark itself. */
+  .mark .sq{transform-box:fill-box;transform-origin:center;
+    transition:transform .3s cubic-bezier(.2,.8,.3,1)}
+  #peek:hover .mark{transform:scale(1.05)}
+  #peek:hover .mark .sq{transform:translate(16px,-16px) scale(1.12)}
+  @media (prefers-reduced-motion: reduce){ .mark{transition:none} }
+
+  /* A user-supplied logo.png simply covers the built-in mark. */
+  .userlogo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+  /* Stage colour of whoever was last on screen — a hint without opening it. */
+  .pip{position:absolute;bottom:5px;left:5px;width:6px;height:6px;border-radius:50%;
+       background:var(--accent);box-shadow:0 0 0 1.5px #fff;opacity:0;transition:opacity .25s}
+  .pip.on{opacity:1;animation:pulse 2.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+
+  /* The card arriving when a conversation opens. */
+  @keyframes cardIn{from{opacity:0;transform:translateX(16px) scale(.985)}
+                    to{opacity:1;transform:none}}
+  .wrap.enter{animation:cardIn .22s cubic-bezier(.2,.8,.3,1) both}
+
+  @media (prefers-reduced-motion: reduce){
+    .tab,.mark .ring,.mark .sq{transition:none}
+    .pip.on{animation:none}
+    .wrap.enter{animation:none}
+  }
+
+  .card{
+    background:linear-gradient(180deg,var(--card) 0%,var(--card-2) 100%);
+    border:1px solid var(--line);
+    border-radius:20px;
+    box-shadow:0 18px 40px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.35);
+    overflow:hidden;
+  }
+
+  /* ---------- top bar ---------- */
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 12px 0 14px;-webkit-app-region:drag}
+  .who{font-size:12.5px;font-weight:650;letter-spacing:.2px;color:var(--txt);
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .place{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .btn{-webkit-app-region:no-drag;width:22px;height:22px;flex:none;border-radius:7px;border:0;
+       background:rgba(255,255,255,.06);color:var(--dim);font-size:12px;line-height:1;
+       display:grid;place-items:center;cursor:pointer;transition:.15s}
+  .btn:hover{background:rgba(255,255,255,.14);color:var(--txt)}
+
+  /* ---------- clock ---------- */
+  .clock{-webkit-app-region:drag;display:flex;align-items:flex-end;gap:12px;padding:2px 14px 0}
+  .time{font-size:56px;font-weight:800;letter-spacing:-2.5px;line-height:1.02;
+        color:var(--accent);font-variant-numeric:tabular-nums}
+  .time .mins{font-size:34px;font-weight:700;letter-spacing:-1px;opacity:.85}
+  .stagewrap{padding-bottom:9px;min-width:0;flex:1}
+  .stage{font-size:19px;font-weight:800;letter-spacing:-.3px;line-height:1.1;color:var(--accent);
+         text-transform:capitalize;white-space:nowrap}
+  .date{font-size:11.5px;color:var(--dim);margin-top:2px;white-space:nowrap;
+        overflow:hidden;text-overflow:ellipsis}
+
+  /* ---------- verdict strip ---------- */
+  .strip{-webkit-app-region:drag;display:flex;align-items:center;gap:8px;
+         margin:8px 10px 10px;padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.04)}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.05)}
+  .verdict{font-size:11.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .delta{font-size:11px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  .badge{font-size:8.5px;font-weight:800;letter-spacing:.9px;padding:2.5px 5px;border-radius:5px;
+         background:rgba(61,220,132,.16);color:#3DDC84;flex:none;display:none}
+  .badge.on{display:block}
+  .badge.stale{background:rgba(255,255,255,.07);color:var(--dim)}
+
+  .fix{display:none;gap:6px;align-items:center;margin:0 10px 10px;padding:8px 10px;
+       border-radius:12px;background:rgba(255,194,75,.10);border:1px solid rgba(255,194,75,.22);
+       flex-wrap:wrap}
+  .fix.on{display:flex}
+  .fixnote{font-size:10.5px;color:#FFC24B;width:100%;line-height:1.35;font-weight:600}
+  .chip{-webkit-app-region:no-drag;font-size:10.5px;font-weight:650;padding:4px 8px;border-radius:8px;
+        border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--txt);cursor:pointer}
+  .chip:hover{background:rgba(255,255,255,.16)}
+  .chip.sel{background:rgba(55,226,213,.18);border-color:rgba(55,226,213,.45);color:var(--accent)}
+
+  /* ---------- panel ---------- */
+  .panel{display:none;border-top:1px solid var(--line);padding:10px 10px 10px}
+  .panel.on{display:block}
+  .label{font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;
+         color:#636A79;margin:2px 4px 7px}
+  input{-webkit-app-region:no-drag;width:100%;background:rgba(255,255,255,.06);border:1px solid var(--line);
+        color:var(--txt);border-radius:11px;padding:9px 11px;font-size:13px;font-family:inherit;outline:0}
+  input::placeholder{color:#5C6373}
+  input:focus{border-color:rgba(55,226,213,.5);background:rgba(255,255,255,.08)}
+
+  .list{margin-top:8px;max-height:292px;overflow-y:auto;overscroll-behavior:contain}
+  .list::-webkit-scrollbar{width:7px}
+  .list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+
+  .row{-webkit-app-region:no-drag;display:flex;align-items:center;gap:9px;padding:8px 10px;
+       border-radius:11px;cursor:pointer;transition:.12s}
+  .row:hover{background:rgba(255,255,255,.07)}
+  .row.active{background:rgba(55,226,213,.12)}
+  .flag{font-size:15px;flex:none;width:19px;text-align:center}
+  .rowmain{flex:1;min-width:0}
+  .rowtop{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rowsub{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .rowtime{font-size:11.5px;font-weight:700;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+  .rowstage{font-size:9.5px;color:var(--dim);text-align:right;margin-top:1px;text-transform:capitalize}
+  .x{flex:none;opacity:0;color:var(--dim);font-size:13px;padding:0 2px;border:0;background:0;cursor:pointer}
+  .row:hover .x{opacity:.65}
+  .x:hover{opacity:1 !important;color:#FF6B5B}
+  .empty{font-size:11.5px;color:var(--dim);padding:10px 12px;line-height:1.5}
+  .hint{font-size:10.5px;color:#5C6373;margin:9px 4px 0;line-height:1.45}
+</style>
+
+<div id="peek" title="Client Clock — click to open">
+  <div class="tab">
+    <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
+      <defs>
+        <mask id="ccNotch" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+          <rect width="512" height="512" fill="#fff"/>
+          <rect x="300" y="125" width="86" height="86" fill="#000"/>
+        </mask>
+      </defs>
+      <circle class="ring" cx="256" cy="256" r="101" fill="none" stroke="#0B0B0C"
+              stroke-width="58" mask="url(#ccNotch)"/>
+      <rect class="sq" x="308" y="133" width="70" height="70" fill="#1B4DFF"/>
+    </svg>
+    <img id="logo" class="userlogo" src="assets/logo.png" alt=""
+         onerror="this.remove()">
+    <div class="pip" id="pip"></div>
+  </div>
+</div>
+
+<div class="wrap"><div class="card">
+  <div class="bar">
+    <div class="who" id="who">—</div>
+    <div class="badge" id="badge">AUTO</div>
+    <div class="place" id="place"></div>
+    <button class="btn" id="toggle" title="Switch client">⌄</button>
+    <button class="btn" id="close" title="Hide (⌘⇧K)">✕</button>
+  </div>
+
+  <div class="clock">
+    <div class="time" id="time">—</div>
+    <div class="stagewrap">
+      <div class="stage" id="stage">—</div>
+      <div class="date" id="date"></div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="dot" id="dot"></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="delta" id="delta"></div>
+  </div>
+
+  <div class="fix" id="fix">
+    <div class="fixnote" id="fixnote"></div>
+    <div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="label" id="listLabel">My clients</div>
+    <input id="search" placeholder="Search a country or city…" autocomplete="off" spellcheck="false">
+    <div class="list" id="list"></div>
+    <div class="hint" id="hint">Pick a place to add it · drag the card to move it · ⌘⇧K hides it</div>
+  </div>
+</div></div>
+
+<script src="zones.js"></script>
+<script src="resolve.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// Day stages — the whole point: never read an AM/PM again.
+// ---------------------------------------------------------------------------
+const STAGES = [
+  { from: 0,  to: 4,  name: 'late night',    color: '#8E86FF', verdict: 'Asleep — do not message', tone: 'bad'  },
+  { from: 4,  to: 6,  name: 'early morning', color: '#FF8FC4', verdict: 'Just waking up',          tone: 'warn' },
+  { from: 6,  to: 8,  name: 'morning',       color: '#37E2D5', verdict: 'Early — good to land first', tone: 'ok' },
+  { from: 8,  to: 11, name: 'morning',       color: '#37E2D5', verdict: 'Prime follow-up window',  tone: 'good' },
+  { from: 11, to: 12, name: 'morning',       color: '#37E2D5', verdict: 'Good time to message',    tone: 'good' },
+  { from: 12, to: 13, name: 'noon',          color: '#FFD166', verdict: 'Lunch — expect a slow reply', tone: 'warn' },
+  { from: 13, to: 17, name: 'afternoon',     color: '#FF9F45', verdict: 'Good time to message',    tone: 'good' },
+  { from: 17, to: 20, name: 'evening',       color: '#FF6B5B', verdict: 'Winding down — still fine', tone: 'warn' },
+  { from: 20, to: 24, name: 'night',         color: '#5C94FF', verdict: 'Late — better to wait',   tone: 'bad'  }
+];
+const TONE = { good:'#3DDC84', ok:'#37E2D5', warn:'#FFC24B', bad:'#FF6B5B' };
+
+const stageFor = (h) => STAGES.find(s => h >= s.from && h < s.to) || STAGES[0];
+
+// Parts of "now" inside a given IANA zone.
+function partsIn(zone, date) {
+  const f = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', weekday: 'short', month: 'short', day: 'numeric',
+    year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+  const p = {};
+  for (const { type, value } of f.formatToParts(date)) p[type] = value;
+  return { h: +p.hour, m: +p.minute, weekday: p.weekday, month: p.month, day: p.day, year: +p.year };
+}
+
+function offsetMinutes(zone, date) {
+  const f = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit',
+    day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  const p = {};
+  for (const { type, value } of f.formatToParts(date)) p[type] = value;
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  return Math.round((asUTC - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+}
+
+const HERE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+function deltaText(zone, date) {
+  const mins = offsetMinutes(zone, date) - offsetMinutes(HERE, date);
+  if (mins === 0) return 'same as you';
+  const sign = mins > 0 ? 'ahead of' : 'behind';
+  const a = Math.abs(mins), h = Math.floor(a / 60), m = a % 60;
+  return `${h}${m ? ':' + String(m).padStart(2, '0') : ''}h ${sign} you`;
+}
+
+// 12-hour clock with the AM/PM deliberately stripped out.
+const hour12 = (h) => (h % 12) || 12;
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let cfg = { clients: [], activeId: 0, overrides: {} };
+let expanded = false;
+let pending = null;   // a place chosen in search, waiting for a name
+let mode = 'manual';  // 'auto' once Chrome tells us who you're looking at
+let folded = false;   // collapsed to the edge tab
+let stale = false;    // the conversation is over; the last person is still shown
+let auto = null;      // { key, name, place|null, precision, alternatives[], at }
+
+const $ = (id) => document.getElementById(id);
+
+async function boot() {
+  cfg = await window.clock.getConfig();
+  if (!cfg.overrides) cfg.overrides = {};
+  window.clock.onProspect(onProspect);
+  window.clock.onIdle(onIdle);
+  window.clock.onPeeked((on) => { folded = on; document.body.classList.toggle('peek', on); });
+
+  // assets/logo.png covers the built-in mark when it exists; if it doesn't
+  // load, drop it and let the mark show through.
+  const lg = $('logo');
+  if (lg && lg.complete && !lg.naturalWidth) lg.remove();
+
+
+  // No conversation is open at startup, so begin as the edge tab. If you've
+  // never added anyone, the panel is already unfolded behind it, ready the
+  // moment you click.
+  if (!cfg.clients.length) { expanded = true; applyExpand(); }
+  setFolded(true);
+  tick();
+  setInterval(tick, 1000);
+}
+
+function save() {
+  window.clock.setConfig({ clients: cfg.clients, activeId: cfg.activeId, overrides: cfg.overrides });
+}
+const active = () => cfg.clients[cfg.activeId] || null;
+
+// What the big numbers are showing right now: the auto-detected prospect wins
+// whenever Chrome has given us one, otherwise your manually picked client.
+function target() {
+  if (mode === 'auto' && auto) {
+    if (!auto.place) return { name: auto.name, missing: true };
+    return { name: auto.name, ...auto.place, isAuto: true };
+  }
+  const c = active();
+  return c ? { ...c, isAuto: false } : null;
+}
+
+// -------------------------------------------------------------------------
+// Chrome bridge: resolve whoever is on screen into a zone.
+// -------------------------------------------------------------------------
+function placeFromZone(zoneId) {
+  const e = ZONES.find(z => z.zone === zoneId);
+  return e ? { zone: e.zone, city: e.city, region: e.region, country: e.country, flag: e.flag } : null;
+}
+
+function onProspect(p) {
+  // A zone you corrected for this person once is final — never re-guessed.
+  const fixed = cfg.overrides[p.key];
+  stale = false;
+  if (fixed) {
+    auto = { key: p.key, name: p.name, place: fixed, precision: 'fixed', alternatives: [], at: Date.now() };
+    mode = 'auto'; setFolded(false); tick(); return;
+  }
+
+  // Otherwise take the most specific hit across the profile card's text:
+  // a city beats a state, a state beats a bare country.
+  const RANK = { city: 3, region: 2, country: 1 };
+  let best = null;
+  for (const c of p.candidates || []) {
+    const r = Places.resolve(c, ZONES, { exclude: [p.name] });
+    if (!r) continue;
+    if (!best || RANK[r.precision] > RANK[best.precision]) best = r;
+    if (best.precision === 'city') break;
+  }
+
+  stale = false;
+  auto = {
+    key: p.key,
+    name: p.name,
+    place: best ? { zone: best.zone, city: best.city, region: best.region, country: best.country, flag: best.flag } : null,
+    precision: best ? best.precision : 'none',
+    alternatives: best ? best.alternatives : [],
+    at: Date.now()
+  };
+  mode = 'auto';
+  setFolded(false);
+  tick();
+}
+
+// Collapsed ⇄ open.
+function setFolded(on) {
+  if (folded === on) return;
+  folded = on;
+  document.body.classList.toggle('peek', on);
+  window.clock.peek(on);
+  if (!on) {
+    // Let the card arrive rather than just appear.
+    const w = document.querySelector('.wrap');
+    w.classList.remove('enter');
+    void w.offsetWidth;            // restart the animation
+    w.classList.add('enter');
+    fit();
+  } else {
+    paintPip();
+  }
+}
+
+// Chrome has no conversation open any more. Keep the last person — the dot on
+// the tab still carries their stage colour, and opening it shows where you
+// left off — but mark the badge as no longer live.
+function onIdle() {
+  stale = true;
+  setFolded(true);
+  tick();
+}
+
+// The dot on the collapsed tab carries the last stage colour.
+function paintPip() {
+  const t = target();
+  const live = t && !t.missing && t.zone;
+  $('pip').className = 'pip' + (live ? ' on' : '');
+  if (live) {
+    const p = partsIn(t.zone, new Date());
+    const st = stageFor(p.h);
+    document.documentElement.style.setProperty('--accent', st.color);
+    $('peek').title = `${t.name} — ${hour12(p.h)}:${String(p.m).padStart(2, '0')} ${st.name}`;
+  } else {
+    $('peek').title = 'Client Clock — click to open';
+  }
+}
+
+function setOverride(key, place) {
+  cfg.overrides[key] = place;
+  if (auto && auto.key === key) {
+    auto.place = place; auto.precision = 'fixed'; auto.alternatives = [];
+  }
+  save(); tick();
+}
+
+// ---------------------------------------------------------------------------
+// The clock face
+// ---------------------------------------------------------------------------
+function tick() {
+  const t = target();
+  const now = new Date();
+
+  if (folded) { paintPip(); return; }
+
+  // Nobody at all yet.
+  if (!t) {
+    paintIdle('No client yet', 'add someone below', 'Search a country to start');
+    return;
+  }
+
+  // Detected the person, but their profile shows no location we can read.
+  if (t.missing) {
+    $('who').textContent = t.name;
+    $('place').textContent = 'location not on profile';
+    $('time').textContent = '—';
+    $('stage').textContent = 'zone unknown';
+    $('date').textContent = '';
+    $('verdict').textContent = 'Open ⌄ and pick their zone once';
+    $('verdict').style.color = TONE.warn;
+    $('dot').style.background = TONE.warn;
+    $('delta').textContent = '';
+    document.documentElement.style.setProperty('--accent', '#8A91A0');
+    $('badge').className = 'badge on stale';
+    $('fix').classList.remove('on');
+    if (expanded) renderList();
+    fit();
+    return;
+  }
+
+  const p = partsIn(t.zone, now);
+  const s = stageFor(p.h);
+  const weekend = p.weekday === 'Sat' || p.weekday === 'Sun';
+
+  document.documentElement.style.setProperty('--accent', s.color);
+  $('who').textContent = t.name;
+  $('place').textContent = `${t.flag} ${t.city}${t.region ? ' · ' + t.region : ''}`;
+  $('time').innerHTML = `${hour12(p.h)}<span class="mins">:${String(p.m).padStart(2, '0')}</span>`;
+  $('stage').textContent = s.name;
+  $('date').textContent = `${p.weekday} ${p.month} ${p.day}`;
+
+  const tone = weekend && s.tone === 'good' ? 'warn' : s.tone;
+  $('verdict').textContent = weekend ? `Weekend · ${s.verdict}` : s.verdict;
+  $('verdict').style.color = TONE[tone];
+  $('dot').style.background = TONE[tone];
+  $('delta').textContent = deltaText(t.zone, now);
+
+  $('badge').className = 'badge' + (t.isAuto ? ' on' : '') + (t.isAuto && stale ? ' stale' : '');
+  renderFix();
+  if (expanded) renderList();
+  fit();
+}
+
+function paintIdle(who, stage, verdict) {
+  $('who').textContent = who;
+  $('place').textContent = '';
+  $('time').textContent = '—';
+  $('stage').textContent = stage;
+  $('date').textContent = '';
+  $('verdict').textContent = verdict;
+  $('verdict').style.color = TONE.warn;
+  $('dot').style.background = '#5C6373';
+  $('delta').textContent = '';
+  $('badge').className = 'badge';
+  $('fix').classList.remove('on');
+  if (expanded) renderList();
+  fit();
+}
+
+// A bare country like "United States" covers several zones. Say so, and let
+// one click settle it for this person for good.
+function renderFix() {
+  const box = $('fix');
+  const show = mode === 'auto' && auto && auto.place &&
+               auto.precision === 'country' && auto.alternatives.length > 1;
+  box.classList.toggle('on', !!show);
+  if (!show) { $('fixnote').textContent = ''; $('chips').innerHTML = ''; return; }
+
+  $('fixnote').textContent =
+    `${auto.place.country} spans ${auto.alternatives.length} zones — showing ${auto.place.region || auto.place.city}. Which one is ${auto.name.split(' ')[0]}?`;
+
+  const chips = $('chips');
+  chips.innerHTML = '';
+  auto.alternatives.forEach(z => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (z.zone === auto.place.zone ? ' sel' : '');
+    const pz = partsIn(z.zone, new Date());
+    b.textContent = `${z.region || z.city} ${hour12(pz.h)}:${String(pz.m).padStart(2, '0')}`;
+    b.onclick = () => setOverride(auto.key, {
+      zone: z.zone, city: z.city, region: z.region, country: z.country, flag: z.flag
+    });
+    chips.appendChild(b);
+  });
+}
+
+// The card is only ever as tall as it needs to be.
+let lastH = 0;
+function fit() {
+  if (folded) return;
+  requestAnimationFrame(() => {
+    if (folded) return;         // folded while this measurement was queued
+    const h = Math.ceil(document.querySelector('.wrap').getBoundingClientRect().height) + 4;
+    if (h !== lastH) { lastH = h; window.clock.setHeight(h); }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Panel: saved clients, or search results
+// ---------------------------------------------------------------------------
+function renderList() {
+  const q = $('search').value.trim().toLowerCase();
+  const list = $('list');
+  const now = new Date();
+
+  if (pending) {
+    $('listLabel').textContent = 'Name this client';
+    $('hint').textContent = `${pending.flag} ${pending.city}${pending.region ? ' · ' + pending.region : ''} — type a name and hit Enter, or Esc to cancel`;
+    list.innerHTML = '';
+    return;
+  }
+
+  if (q) {
+    $('listLabel').textContent = 'Add a place';
+    $('hint').textContent = 'Pick a place, then give it a name';
+    const hits = ZONES.filter(z =>
+      (`${z.city} ${z.region} ${z.country} ${z.tags}`).toLowerCase().includes(q)
+    ).slice(0, 40);
+
+    list.innerHTML = hits.length ? '' : '<div class="empty">Nothing matched. Try the country name, or a big city in it.</div>';
+    hits.forEach(z => {
+      const p = partsIn(z.zone, now);
+      const s = stageFor(p.h);
+      list.appendChild(rowEl({
+        flag: z.flag,
+        top: `${z.city}${z.region ? ' · ' + z.region : ''}`,
+        sub: z.country,
+        time: `${hour12(p.h)}:${String(p.m).padStart(2, '0')}`,
+        stage: s.name,
+        color: s.color,
+        onClick: () => startAdd(z)
+      }));
+    });
+    return;
+  }
+
+  $('listLabel').textContent = 'My clients';
+  $('hint').textContent = mode === 'auto' && auto
+    ? `Auto-following ${auto.name} in Chrome · click a name to pin it manually`
+    : 'Drag the card to move it · ⌘⇧K hides and shows it';
+  list.innerHTML = cfg.clients.length ? '' :
+    '<div class="empty">No clients saved yet.<br>Search a country above — e.g. <b>United States</b> — to add one.</div>';
+
+  cfg.clients.forEach((c, i) => {
+    const p = partsIn(c.zone, now);
+    const s = stageFor(p.h);
+    list.appendChild(rowEl({
+      flag: c.flag,
+      top: c.name,
+      sub: `${c.city}${c.region ? ' · ' + c.region : ''} — ${c.country}`,
+      time: `${hour12(p.h)}:${String(p.m).padStart(2, '0')}`,
+      stage: s.name,
+      color: s.color,
+      active: i === cfg.activeId,
+      onClick: () => { mode = 'manual'; cfg.activeId = i; save(); tick(); },
+      onRemove: () => {
+        cfg.clients.splice(i, 1);
+        if (cfg.activeId >= cfg.clients.length) cfg.activeId = Math.max(0, cfg.clients.length - 1);
+        save(); tick();
+      }
+    }));
+  });
+}
+
+function rowEl({ flag, top, sub, time, stage, color, active, onClick, onRemove }) {
+  const el = document.createElement('div');
+  el.className = 'row' + (active ? ' active' : '');
+  el.innerHTML = `
+    <div class="flag">${flag}</div>
+    <div class="rowmain">
+      <div class="rowtop"></div>
+      <div class="rowsub"></div>
+    </div>
+    <div>
+      <div class="rowtime" style="color:${color}"></div>
+      <div class="rowstage"></div>
+    </div>`;
+  el.querySelector('.rowtop').textContent = top;
+  el.querySelector('.rowsub').textContent = sub;
+  el.querySelector('.rowtime').textContent = time;
+  el.querySelector('.rowstage').textContent = stage;
+  el.onclick = onClick;
+  if (onRemove) {
+    const x = document.createElement('button');
+    x.className = 'x';
+    x.textContent = '✕';
+    x.title = 'Remove';
+    x.onclick = (e) => { e.stopPropagation(); onRemove(); };
+    el.appendChild(x);
+  }
+  return el;
+}
+
+function startAdd(z) {
+  // Auto-detected person with no readable location: this sets their zone.
+  if (mode === 'auto' && auto && !auto.place) {
+    setOverride(auto.key, { zone: z.zone, city: z.city, region: z.region, country: z.country, flag: z.flag });
+    $('search').value = '';
+    renderList();
+    return;
+  }
+  pending = z;
+  const s = $('search');
+  s.value = '';
+  s.placeholder = `Who is in ${z.city}?`;
+  s.focus();
+  renderList();
+}
+
+function cancelAdd() {
+  pending = null;
+  $('search').value = '';
+  $('search').placeholder = 'Search a country or city…';
+  renderList();
+}
+
+function commitAdd(name) {
+  const z = pending;
+  cfg.clients.push({
+    name: name || z.city,
+    zone: z.zone, city: z.city, region: z.region, country: z.country, flag: z.flag
+  });
+  cfg.activeId = cfg.clients.length - 1;
+  pending = null;
+  $('search').value = '';
+  $('search').placeholder = 'Search a country or city…';
+  save();
+  tick();
+}
+
+// ---------------------------------------------------------------------------
+// Chrome
+// ---------------------------------------------------------------------------
+function applyExpand() {
+  $('panel').classList.toggle('on', expanded);
+  $('toggle').textContent = expanded ? '⌃' : '⌄';
+  if (expanded) { renderList(); $('search').focus(); }
+  fit();
+}
+
+$('toggle').onclick = () => { expanded = !expanded; applyExpand(); };
+$('peek').onclick = () => { setFolded(false); tick(); };
+$('close').onclick = () => { expanded = false; applyExpand(); setFolded(true); };
+$('search').oninput = renderList;
+$('search').onkeydown = (e) => {
+  if (e.key === 'Escape') { if (pending) cancelAdd(); else { expanded = false; applyExpand(); } }
+  if (e.key === 'Enter') {
+    if (pending) return commitAdd($('search').value.trim());
+    const first = $('list').querySelector('.row');
+    if (first) first.click();
+  }
+};
+
+boot();
+</script>

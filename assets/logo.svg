@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Client Clock — an open C, its notch filled by the blue square. -->
+  <defs>
+    <mask id="ccNotch" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <rect x="300" y="125" width="86" height="86" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#FFFFFF"/>
+  <circle cx="256" cy="256" r="101" fill="none" stroke="#0B0B0C" stroke-width="58" mask="url(#ccNotch)"/>
+  <rect x="308" y="133" width="70" height="70" fill="#1B4DFF"/>
+</svg>
