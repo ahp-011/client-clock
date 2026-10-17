@@ -1,7 +1,9 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, globalShortcut } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 
 const BRIDGE_PORT = 8899;
 
@@ -20,9 +22,56 @@ const PEEK_MARGIN = 0;   // flush with the edge, like the other docked widgets
 
 // Backstop only. Chrome now tells us the moment a conversation loses focus,
 // so this just covers the case where Chrome dies without saying goodbye.
-const IDLE_MS = 60 * 1000;
+const IDLE_MS = +process.env.CC_IDLE_MS || 60 * 1000;
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
+
+// ---------------------------------------------------------------------------
+// Start at login, via a launchd agent — so the clock is already there when you
+// open Chrome, and comes back by itself after a restart.
+// ---------------------------------------------------------------------------
+const PLIST_LABEL = 'com.aman.client-clock';
+const PLIST_PATH = path.join(os.homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.plist`);
+
+function plistContents() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${PLIST_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${process.execPath}</string>
+    <string>${app.getAppPath()}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key><string>/tmp/client-clock.log</string>
+  <key>StandardErrorPath</key><string>/tmp/client-clock.err</string>
+</dict>
+</plist>
+`;
+}
+
+const autostartEnabled = () => fs.existsSync(PLIST_PATH);
+
+function setAutostart(on) {
+  try {
+    if (on) {
+      fs.mkdirSync(path.dirname(PLIST_PATH), { recursive: true });
+      fs.writeFileSync(PLIST_PATH, plistContents());
+      // Quitting from the tray should stay quit, so only load it for future
+      // logins rather than kicking off a second copy right now.
+      execFile('/bin/launchctl', ['load', '-w', PLIST_PATH], () => {});
+    } else {
+      execFile('/bin/launchctl', ['unload', '-w', PLIST_PATH], () => {
+        try { fs.unlinkSync(PLIST_PATH); } catch {}
+      });
+    }
+  } catch (e) {
+    console.error('[client-clock] autostart:', e.message);
+  }
+}
 
 const DEFAULTS = {
   overrides: {},   // person key -> zone they were corrected to
@@ -115,10 +164,8 @@ function toggleWindow() {
   if (win.isVisible()) win.hide(); else win.showInactive();
 }
 
-function createTray() {
-  tray = new Tray(trayIcon());
-  tray.setToolTip('Client Clock');
-  tray.setContextMenu(Menu.buildFromTemplate([
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
     { label: 'Show / hide  (⌘⇧K)', click: toggleWindow },
     { label: 'Snap to top-right', click: () => {
         setPeek(false);
@@ -127,8 +174,21 @@ function createTray() {
         config.pos = p; saveConfig(config);
       } },
     { type: 'separator' },
+    {
+      label: 'Start at login',
+      type: 'checkbox',
+      checked: autostartEnabled(),
+      click: (item) => { setAutostart(item.checked); tray.setContextMenu(buildTrayMenu()); }
+    },
+    { type: 'separator' },
     { label: 'Quit Client Clock', click: () => app.quit() }
-  ]));
+  ]);
+}
+
+function createTray() {
+  tray = new Tray(trayIcon());
+  tray.setToolTip('Client Clock');
+  tray.setContextMenu(buildTrayMenu());
   tray.on('click', toggleWindow);
 }
 
@@ -146,6 +206,9 @@ if (!app.requestSingleInstanceLock()) {
     if (app.dock) app.dock.hide(); // menu-bar utility, not a Dock app
     createWindow();
     createTray();
+    // "Always on" means it should be back after a restart, without being asked.
+    // Turn it off any time from the tray.
+    if (!autostartEnabled()) setAutostart(true);
     globalShortcut.register('CommandOrControl+Shift+K', toggleWindow);
   });
 }
@@ -162,6 +225,7 @@ function allowedOrigin(origin) {
 
 // Last thing the extension told us — purely so you can check the bridge works.
 let lastSeen = null;
+let lastPresentAt = 0;   // last time Chrome said you were anywhere on Dribbble
 
 const bridge = http.createServer((req, res) => {
   const origin = req.headers.origin;
@@ -184,9 +248,18 @@ const bridge = http.createServer((req, res) => {
     }));
     return;
   }
+  // Still on Dribbble, just not in a conversation: stay open, stay awake.
+  if (req.method === 'POST' && req.url === '/present') {
+    lastPresentAt = Date.now();
+    if (lastSeen) lastSeen.at = lastPresentAt;  // don't let the watchdog fold it
+    if (win) win.webContents.send('auto:present');
+    res.writeHead(204).end();
+    return;
+  }
   // Chrome says you've navigated off the conversation — collapse right away.
   if (req.method === 'POST' && req.url === '/idle') {
     lastSeen = null;
+    lastPresentAt = 0;
     if (win) win.webContents.send('auto:idle');
     res.writeHead(204).end();
     return;
@@ -213,6 +286,7 @@ const bridge = http.createServer((req, res) => {
         : []
     };
     if (payload.name) {
+      lastPresentAt = Date.now();
       lastSeen = { name: payload.name, key: payload.key, candidates: payload.candidates, at: Date.now() };
       if (win) win.webContents.send('auto:prospect', payload);
     }
@@ -225,12 +299,15 @@ bridge.listen(BRIDGE_PORT, '127.0.0.1');
 
 // Chrome stops talking when the tab closes or Chrome quits; fall quiet too.
 setInterval(() => {
-  if (!lastSeen || !win) return;
-  if (Date.now() - lastSeen.at > IDLE_MS) {
+  if (!win) return;
+  const heard = Math.max(lastSeen ? lastSeen.at : 0, lastPresentAt);
+  if (!heard) return;
+  if (Date.now() - heard > IDLE_MS) {
     lastSeen = null;
+    lastPresentAt = 0;
     win.webContents.send('auto:idle');
   }
-}, 15000);
+}, 5000);
 
 ipcMain.handle('config:get', () => config);
 ipcMain.handle('config:set', (_e, next) => {

@@ -11,5 +11,6 @@ contextBridge.exposeInMainWorld('clock', {
   onProspect: (cb) => ipcRenderer.on('auto:prospect', (_e, p) => cb(p)),
   // Chrome went quiet: no conversation open any more.
   onIdle: (cb) => ipcRenderer.on('auto:idle', () => cb()),
+  onPresent: (cb) => ipcRenderer.on('auto:present', () => cb()),
   onPeeked: (cb) => ipcRenderer.on('ui:peeked', (_e, on) => cb(on))
 });

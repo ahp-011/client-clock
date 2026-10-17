@@ -3,8 +3,10 @@
 const BASE = 'http://127.0.0.1:8899';
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (!msg || (msg.type !== 'prospect' && msg.type !== 'idle')) return;
-  const url = msg.type === 'idle' ? BASE + '/idle' : BASE + '/active';
+  if (!msg || ['prospect', 'idle', 'present'].indexOf(msg.type) === -1) return;
+  const url = msg.type === 'idle' ? BASE + '/idle'
+            : msg.type === 'present' ? BASE + '/present'
+            : BASE + '/active';
   fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

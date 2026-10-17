@@ -16,6 +16,9 @@
   // Re-send even when nothing changed, so the widget knows the conversation is
   // still open and keeps itself unfolded.
   const HEARTBEAT_MS = 12000;
+  // While you're anywhere on Dribbble, keep telling the widget you're here, so
+  // it stays open instead of folding away between conversations.
+  const PRESENT_MS = 5000;
   const MAX_CANDIDATES = 24;
 
   const NOISE = /^(message|messages|inbox|back to inbox|follow|following|hire me|save|share|like|likes|view profile|schedule a meeting|create a new proposal|view proposal|visit help center|pro|team|about|work|shots|collections|boards|settings|sign out|get hired|hire talent|explore|community)$/i;
@@ -163,6 +166,7 @@
   let lastSentAt = 0;
   let toldIdle = false;
   let lastKey = null;
+  let lastPresentAt = 0;
   let burstTimers = [];
   let awaitingNewKey = false;   // mid-switch: the sidebar may still be stale
 
@@ -178,12 +182,15 @@
     let data;
     try { data = extract(); } catch { return; }
 
-    // On Dribbble, but not in anyone's conversation or profile: let the widget
-    // fold away instead of showing a stale name.
+    // On Dribbble, but not in anyone's conversation or profile — the inbox,
+    // the feed, a shot. You're still working Dribbble, so the widget stays
+    // open on whoever you last had; it just stops claiming to be live.
     if (!data) {
-      if (!toldIdle) { toldIdle = true; lastSent = ''; send('idle', {}); }
+      const t = Date.now();
+      if (t - lastPresentAt > PRESENT_MS) { lastPresentAt = t; lastSent = ''; send('present', {}); }
       return;
     }
+    lastPresentAt = 0;
     toldIdle = false;
 
     // Straight after a conversation switch the old person can still be in the

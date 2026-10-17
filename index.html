@@ -381,6 +381,7 @@ let mode = 'manual';  // 'auto' once Chrome tells us who you're looking at
 let folded = false;   // collapsed to the edge tab
 let stale = false;    // the conversation is over; the last person is still shown
 let heldOpen = false; // you opened it yourself — Chrome losing focus must not shut it
+let closedByHand = false; // you pressed ✕: stay shut until the next real prospect
 let auto = null;      // { key, name, place|null, precision, alternatives[], at }
 
 const $ = (id) => document.getElementById(id);
@@ -392,6 +393,7 @@ async function boot() {
   applyTheme();
   window.clock.onProspect(onProspect);
   window.clock.onIdle(onIdle);
+  window.clock.onPresent(onPresent);
   window.clock.onPeeked((on) => { folded = on; document.body.classList.toggle('peek', on); });
 
   // assets/logo.png covers the built-in mark when it exists; if it doesn't
@@ -456,6 +458,7 @@ function onProspect(p) {
   const fixed = cfg.overrides[p.key];
   stale = false;
   heldOpen = false;
+  closedByHand = false;        // a real conversation always wins the card back
   if (fixed) {
     auto = { key: p.key, name: p.name, place: fixed, precision: 'fixed', alternatives: [], at: Date.now() };
     mode = 'auto'; setFolded(false); tick(); return;
@@ -508,6 +511,16 @@ function setFolded(on) {
 // Chrome has no conversation open any more. Keep the last person: the dot on
 // the tab still carries their stage colour, and opening it shows where you
 // left off.
+// You're on Dribbble somewhere — the inbox, the feed, someone's shots. Keep
+// the card up with whoever you last opened, so it's there the moment you jump
+// back into a thread. Only leaving Dribbble altogether folds it away.
+function onPresent() {
+  if (!folded) { tick(); return; }
+  if (closedByHand) return;       // you shut it; don't fight you over it
+  setFolded(false);
+  tick();
+}
+
 function onIdle() {
   stale = true;
   // Opening or touching the card counts as "I want this open" — and clicking
@@ -806,7 +819,10 @@ $('theme').onclick = () => {
 $('toggle').onclick = () => { expanded = !expanded; applyExpand(); };
 $('peek').onclick = () => { heldOpen = true; setFolded(false); tick(); };
 document.querySelector('.card').addEventListener('mousedown', () => { heldOpen = true; });
-$('close').onclick = () => { heldOpen = false; expanded = false; applyExpand(); setFolded(true); };
+$('close').onclick = () => {
+  heldOpen = false; closedByHand = true;
+  expanded = false; applyExpand(); setFolded(true);
+};
 $('search').oninput = renderList;
 $('search').onkeydown = (e) => {
   if (e.key === 'Escape') { if (pending) cancelAdd(); else { expanded = false; applyExpand(); } }

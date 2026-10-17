@@ -71,16 +71,20 @@ set that person's zone once from the `⌄` panel.
 The widget has two states:
 
 - **Collapsed** — a small tab squeezed against the right edge of the screen,
-  showing your logo. This is how it sits whenever no conversation is open. The
-  dot on the tab carries the current stage colour of the last person you were
-  talking to, and hovering it shows their name and local time.
-- **Open** — the full card, which appears *by itself* the moment you open a
-  Dribbble conversation.
+  showing your logo. This is how it sits when you are not on Dribbble at all.
+  The dot on the tab carries the current stage colour of the last person you
+  were talking to, and hovering it shows their name and local time.
+- **Open** — the full card. It opens *by itself* the moment you land on
+  Dribbble, and **stays open the whole time you are there** — the inbox, the
+  feed, someone's shots, anywhere. Between conversations it keeps showing
+  whoever you last opened, so the clock is already up when you jump back into a
+  thread.
 
-It collapses again when Chrome tells it you've navigated off the conversation,
-or after 10 minutes with no word from Chrome at all (tab closed, Chrome quit).
-Switching to another app does **not** collapse it — you can still glance at the
-clock while you work somewhere else.
+It collapses when you leave Dribbble entirely, or after a minute with no word
+from Chrome at all (tab closed, Chrome quit). Switching to another app does
+**not** collapse it — you can still glance at the clock while you work
+somewhere else. Pressing `✕` keeps it shut until your next real conversation,
+so it never fights you.
 
 Click the tab to open it by hand; click `✕` on the card to put it back. `⌘⇧K`
 still hides and shows the whole thing.
@@ -145,4 +149,19 @@ node tools-genzones.js
 
 ```bash
 ./start.sh
+```
+
+## Always on
+
+It installs a launchd agent (`~/Library/LaunchAgents/com.aman.client-clock.plist`)
+on first run, so it starts at login and is already waiting before you open
+Chrome. If it ever crashes, launchd restarts it.
+
+Quitting from the tray stays quit — a clean exit is respected, only crashes are
+revived. To stop it starting at login, untick **Start at login** in the tray
+menu; that unloads the agent and deletes the plist.
+
+```bash
+launchctl kickstart gui/$UID/com.aman.client-clock   # start it right now
+launchctl unload -w ~/Library/LaunchAgents/com.aman.client-clock.plist
 ```
