@@ -104,6 +104,17 @@ function peekSpot(y) {
   };
 }
 
+// Keep the window wholly on whichever screen it is being dragged across, so
+// "all the way down" stops at the edge instead of disappearing past it.
+function clampToScreen(x, y, w, h, near) {
+  const d = near ? screen.getDisplayNearestPoint(near) : screen.getPrimaryDisplay();
+  const a = d.workArea;
+  return {
+    x: Math.round(Math.min(Math.max(x, a.x), a.x + a.width - w)),
+    y: Math.round(Math.min(Math.max(y, a.y), a.y + a.height - h))
+  };
+}
+
 function topRight() {
   const { workArea } = screen.getPrimaryDisplay();
   return {
@@ -135,12 +146,8 @@ function createWindow() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile('index.html');
 
-  win.on('moved', () => {
-    if (peeked) return;              // the tab is docked; don't overwrite the card spot
-    const [x, y] = win.getPosition();
-    config.pos = { x, y };
-    saveConfig(config);
-  });
+  // Covers the card's own native drag region as well as our tab dragging.
+  win.on('moved', () => { if (!dragTimer) rememberSpot(); });
 }
 
 function trayIcon() {
@@ -324,7 +331,11 @@ ipcMain.on('ui:height', (_e, h) => {
   if (!win || peeked) return;   // the collapsed tab has a fixed size
   const next = Math.max(90, Math.min(700, Math.round(h)));
   const b = win.getBounds();
-  if (Math.abs(b.height - next) > 1) win.setBounds({ ...b, height: next });
+  if (Math.abs(b.height - next) > 1) {
+    // Growing downward must not run off the bottom of the screen.
+    const pos = clampToScreen(b.x, b.y, b.width, next, { x: b.x, y: b.y });
+    win.setBounds({ x: pos.x, y: pos.y, width: b.width, height: next });
+  }
 });
 ipcMain.on('ui:hide', () => win && win.hide());
 
@@ -332,14 +343,67 @@ ipcMain.on('ui:hide', () => win && win.hide());
 // puts the card back exactly where you last left it.
 let peeked = false;
 
+// The collapsed tab is 52px of click target, so a drag started on it will
+// leave the window within a frame or two. Following the OS cursor from the
+// main process keeps it glued to the pointer no matter how fast you throw it.
+let dragTimer = null;
+let dragState = null;
+
+ipcMain.on('ui:dragStart', () => {
+  if (!win) return;
+  const p = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  dragState = { dx: p.x - b.x, dy: p.y - b.y, moved: 0, started: Date.now() };
+  clearInterval(dragTimer);
+  dragTimer = setInterval(() => {
+    if (!win || !dragState) return stopDrag();
+    // Never leave the window stuck to the cursor if a mouseup goes missing.
+    if (Date.now() - dragState.started > 15000) return stopDrag();
+    const c = screen.getCursorScreenPoint();
+    const b2 = win.getBounds();
+    // Docked tab: vertical only, so it stays flush with the screen edge.
+    const wantX = peeked ? b2.x : c.x - dragState.dx;
+    const wantY = c.y - dragState.dy;
+    const pos = clampToScreen(wantX, wantY, b2.width, b2.height, c);
+    dragState.moved += Math.abs(pos.x - b2.x) + Math.abs(pos.y - b2.y);
+    if (pos.x !== b2.x || pos.y !== b2.y) win.setPosition(pos.x, pos.y);
+  }, 16);
+});
+
+ipcMain.handle('ui:dragEnd', () => {
+  const moved = dragState ? dragState.moved : 0;
+  stopDrag();
+  return { moved: moved > 3 };
+});
+
+function stopDrag() {
+  clearInterval(dragTimer);
+  dragTimer = null;
+  dragState = null;
+  rememberSpot();
+}
+
+// One vertical position for both states: drag the tab, and the card opens
+// where you left it.
+function rememberSpot() {
+  if (!win) return;
+  const b = win.getBounds();
+  const cardX = (config.pos && config.pos.x != null) ? config.pos.x : topRight().x;
+  config.pos = peeked ? { x: cardX, y: b.y } : { x: b.x, y: b.y };
+  saveConfig(config);
+}
+
 ipcMain.on('ui:peek', (_e, next) => setPeek(!!next));
 
 function setPeek(next) {
   if (!win || peeked === next) return;
   const b = win.getBounds();
+  const spot = config.pos || topRight();
   const target = next
     ? { ...peekSpot(b.y), width: PEEK_W, height: PEEK_H }
-    : { ...(config.pos || topRight()), width: WIDTH, height: COMPACT_H };
+    // Opening is taller than the tab, so a tab parked at the bottom edge would
+    // otherwise push the card off-screen.
+    : { ...clampToScreen(spot.x, spot.y, WIDTH, COMPACT_H), width: WIDTH, height: COMPACT_H };
 
   if (next) {
     config.pos = { x: b.x, y: b.y };          // remember where the card was

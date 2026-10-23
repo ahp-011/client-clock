@@ -89,6 +89,26 @@ so it never fights you.
 Click the tab to open it by hand; click `✕` on the card to put it back. `⌘⇧K`
 still hides and shows the whole thing.
 
+## Moving it
+
+**Drag the collapsed tab up or down** to park it anywhere along the right edge —
+level with your Dribbble sidebar, out of the way of a video call, wherever. It
+stays where you put it, across folding, opening and restarts.
+
+A press that doesn't move is still a click that opens the card, so you never
+have to aim carefully: the two are told apart by how far the window actually
+travelled, not by how long you held the button.
+
+The tab keeps its x on the screen edge — it's a docked tab, and its shadow and
+rounded corners are drawn for that edge — so dragging it is vertical only. The
+**open card** drags freely in both directions from anywhere on its surface.
+
+Both states share one vertical position, so a tab you drag down opens its card
+in the same place. Everything is clamped to the screen: drag it to the very
+bottom and the card still opens fully on-screen rather than hanging off the
+edge, and the card shifts up rather than overflowing when it grows (for
+instance when the zone-picker strip appears).
+
 ## Branding
 
 The mark is an open **C** with a blue square (`#1B4DFF`) seated in its notch, on

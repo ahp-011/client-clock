@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('clock', {
   expand: (expanded) => ipcRenderer.send('ui:expand', expanded),
   setHeight: (h) => ipcRenderer.send('ui:height', h),
   peek: (on) => ipcRenderer.send('ui:peek', on),
+  dragStart: () => ipcRenderer.send('ui:dragStart'),
+  dragEnd: () => ipcRenderer.invoke('ui:dragEnd'),
   hide: () => ipcRenderer.send('ui:hide'),
   // Whoever Chrome says you're looking at right now.
   onProspect: (cb) => ipcRenderer.on('auto:prospect', (_e, p) => cb(p)),

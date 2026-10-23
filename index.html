@@ -89,7 +89,9 @@
 
   /* ---------- collapsed: the logo tile, docked to the right edge ---------- */
   #peek{display:none;position:fixed;inset:0;align-items:center;justify-content:flex-end;
-        -webkit-app-region:no-drag;cursor:pointer}
+        -webkit-app-region:no-drag;cursor:grab}
+  #peek.dragging{cursor:grabbing}
+  #peek.dragging .tab{transform:none !important}
   .tab{
     width:52px;height:52px;
     border-radius:15px 0 0 15px;background:#FFFFFF;
@@ -817,7 +819,23 @@ $('theme').onclick = () => {
   applyTheme(); save(); tick();
 };
 $('toggle').onclick = () => { expanded = !expanded; applyExpand(); };
-$('peek').onclick = () => { heldOpen = true; setFolded(false); tick(); };
+// Drag the tab to move it up or down the edge; a plain click still opens it.
+// Which one it was is decided by how far the window actually travelled, so a
+// twitch while clicking doesn't count as a drag.
+$('peek').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  $('peek').classList.add('dragging');
+  window.clock.dragStart();
+
+  const finish = async () => {
+    window.removeEventListener('mouseup', finish, true);
+    $('peek').classList.remove('dragging');
+    const { moved } = await window.clock.dragEnd();
+    if (!moved) { heldOpen = true; setFolded(false); tick(); }
+  };
+  window.addEventListener('mouseup', finish, true);
+});
 document.querySelector('.card').addEventListener('mousedown', () => { heldOpen = true; });
 $('close').onclick = () => {
   heldOpen = false; closedByHand = true;
